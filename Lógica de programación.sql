@@ -140,6 +140,20 @@ end
 go
 
 
+--TODO: Implementar logica para obtener IDs que tengan el formato ID identity con Value de parámetros
+go
+create or alter procedure PensarUnNombreAdecuado
+	@tabla nvarchar(255),
+	@texto varchar(200),
+	@ID int output
+as
+begin
+	print 'Agregar funcionalidad'
+end
+go
+
+
+
 /***************************
 	Tablas Principales
     ****************************/
@@ -177,5 +191,6 @@ go
 
 select * from Cliente
 
+--TODO: Agregar más registros mediante IA
 exec RegistrarCliente '71821732', 'prueba', 'prueba', 'cc', 'hombre e'
 
