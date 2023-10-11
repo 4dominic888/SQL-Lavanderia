@@ -78,12 +78,71 @@ insert into MarcaProducto values
 
 
 /***************************
-	Tablas Principales
+	Funciones complementarias
     ****************************/
 
-declare @webo int = (select ID from Genero where [Value] like trim('   o+tros  '))
-print @webo
+--Funcion que obtiene el entero de una ID que ya tiene el formato de ID de tipo varchar(25) unique
+go
+create or alter function ObtenerID (@idTexto nvarchar(25)) 
+returns int as
+begin
+	return substring(@idTexto, 5, len(@idTexto))
+end
+go
 
+
+--Funcion que en base al ID formateado, te genera el siguiente
+go
+create or alter function SiguienteID(@idTexto nvarchar(25), @prefijo char(3))
+returns nvarchar(25) as
+begin
+	declare @numero int = dbo.ObtenerID(@idTexto) + 1;
+	return concat(@prefijo, '-', @numero);
+end
+go
+
+
+/*
+Procedimiento almacenado que genera el formato de IDs de tablas designadas con el ID de tipo varchar(25) unique
+el tercer parámetro regresa la ID como tal, se debe colocar una variable que tome ese valor seguido de OUTPUT
+Ejemplo:
+
+	declare @IDnueva nvarchar(25);
+	exec CrearID 'CLI', 'Genero', @IDnueva output
+	print @IDnueva
+*/
+go
+create or alter procedure CrearID
+	@prefijo char(3),
+	@tabla nvarchar(255),
+	@retorno nvarchar(25) output
+as
+begin
+	begin try
+		begin transaction
+
+		--Si existe registros en la tabla, usar la ID del último registro, caso contrario, usar 1
+		declare @sql nvarchar(200) = concat('if exists (select top(1) ID from ',@tabla,') ', 
+												'set @r = (select top(1) ID from ', @tabla, ' order by ID desc) 
+											else set @r = concat(''', @prefijo, ''', ''-'', ', '0)');	
+		declare @idTabla nvarchar(25)
+		exec sp_executesql @sql, N'@r nvarchar(25) output', @idTabla output
+		set @retorno = dbo.SiguienteID(@idTabla, @prefijo);
+		commit transaction
+	end try
+	begin catch
+		print concat('Ha ocurrido un error en asignar el ID de la tabla ',@tabla )
+		print ERROR_MESSAGE()
+		print ERROR_LINE()
+		rollback transaction
+	end catch
+end
+go
+
+
+/***************************
+	Tablas Principales
+    ****************************/
 go
 create or alter procedure RegistrarCliente
 	@DNI char(8),
@@ -92,31 +151,31 @@ create or alter procedure RegistrarCliente
 	@Nombre nvarchar(100),
 	@genero varchar(75) as
 begin
-	declare @idgenero int = (select ID from Genero where [Value] like trim(@genero))
-	declare @idCliente varchar(25)
-	/*
-	if exists (select top(1) ID from Cliente)
-		set @idCliente = 'CLI-1' --CLI-4578454125478541256987
-	else begin
-		
-	end
-	*/
-	insert into Cliente values (@idgenero, )
+	begin try
+		begin transaction
+		declare @idgenero int = (select ID from Genero where [Value] like trim(@genero))
+		declare @idCliente varchar(25)
+		exec CrearID 'CLI', 'Cliente', @idCliente output
+		insert into Cliente values (@idCliente, @idgenero, @DNI, @Apellido_Paterno, @Apellido_Materno, @Nombre);
+		commit transaction
+	end try
+	begin catch
+		declare @posibleCausa varchar(150) = 'sea por otro motivo, lea el error para más detalles';
+		select @posibleCausa = case ERROR_NUMBER()
+			when 515 then 'el género esté mal escrito, debe ser hombre, mujer, otros u otro valor agregado de la tabla Genero'
+			when 2627 then 'el DNI colocado ya exista'
+			when 547 then 'el DNI tenga menos de 8 carácteres'
+		end
+		print ' '
+		print concat('Es posible que ', @posibleCausa, '.');
+
+		print ERROR_MESSAGE()
+		rollback transaction
+	end catch
 end
 go
 
---TODO: Crear una función que te genere ID formateada piola
-go
-create or alter function CrearID(
-	@prefijo char(3),
-	@tabla nvarchar(255)
-) 
-returns varchar(25) as
-begin
-	declare @sql nvarchar(200) = 'set @r = (select top(1) ID from Genero)'
-	declare @r int
-	exec sp_executesql @sql, N'@r int output', @r output
-	print @r
-	return 'algo'
-end
-go
+select * from Cliente
+
+exec RegistrarCliente '71821732', 'prueba', 'prueba', 'cc', 'hombre e'
+

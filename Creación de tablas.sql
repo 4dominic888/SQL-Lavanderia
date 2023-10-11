@@ -82,7 +82,7 @@ CREATE TABLE MarcaProducto(
 CREATE TABLE Cliente(
 	ID varchar(25) not null unique,
 	ID_genero int not null foreign key references Genero(ID),
-	DNI char(8) not null unique,
+	DNI char(8) not null unique check(len(DNI) = 8),
 	Apellido_paterno nvarchar(100) not null,
 	Apellido_materno nvarchar(100) not null,
 	Nombre nvarchar(100) not null
@@ -91,7 +91,7 @@ CREATE TABLE Cliente(
 CREATE TABLE Empleado(
 	ID varchar(25) not null unique,
 	ID_genero int not null foreign key references Genero(ID),
-	DNI char(8) not null unique,
+	DNI char(8) not null unique check(len(DNI) = 8),
 	Apellido_paterno nvarchar(100) not null,
 	Apellido_materno nvarchar(100) not null,
 	Nombre nvarchar(100) not null,
