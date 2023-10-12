@@ -26,8 +26,7 @@ insert into TipoRopa values
 ('Ropa interior mujer'), ('Calcetines'), ('Pijama'), ('Bata'), ('Ropa deportiva'),
 ('Ropa de gimnasia'), ('Traje de baño'), ('Camisetas polo'), ('Sudadera'), ('Ropa formal'),
 ('Uniforme escolar'), ('Ropa de bebé'), ('Sábana'), ('Funda'), ('Chompa'),
-('Toalla'), ('Mantel'), ('Alfombra'), ('Delantal'), ('Gorro')
-
+('Toalla'), ('Mantel'), ('Alfombra'), ('Delantal'), ('Gorro'), ('Jean')
 
 --Los colores no deben ser del todo exactos, pero debe entrar en alguna de estas categorias
 insert into ColorRopa values
@@ -120,15 +119,20 @@ as
 begin
 	begin try
 		begin transaction
-
-		--Si existe registros en la tabla, usar la ID del último registro, caso contrario, usar 1
-		declare @sql nvarchar(200) = concat('if exists (select top(1) ID from ',@tabla,') ', 
-												'set @r = (select top(1) ID from ', @tabla, ' order by ID desc) 
-											else set @r = concat(''', @prefijo, ''', ''-'', ', '0)');	
-		declare @idTabla nvarchar(25)
-		exec sp_executesql @sql, N'@r nvarchar(25) output', @idTabla output
-		set @retorno = dbo.SiguienteID(@idTabla, @prefijo);
-		commit transaction
+		if(len(@prefijo) = 3) begin
+			--Si existe registros en la tabla, usar la ID del último registro, caso contrario, usar 1
+			declare @sql nvarchar(200) = concat('if exists (select top(1) ID from ',@tabla,') ', 
+													'set @r = (select top(1) ID from ', @tabla, ' order by ID desc) 
+												else set @r = concat(''', @prefijo, ''', ''-'', ', '0)');	
+			declare @idTabla nvarchar(25)
+			exec sp_executesql @sql, N'@r nvarchar(25) output', @idTabla output
+			set @retorno = dbo.SiguienteID(@idTabla, @prefijo);
+			commit transaction
+		end
+		else begin
+			print('El prefijo no tiene 3 carácteres, creación de ID fallida')
+			rollback transaction
+		end
 	end try
 	begin catch
 		print concat('Ha ocurrido un error en asignar el ID de la tabla ',@tabla )
@@ -140,19 +144,52 @@ end
 go
 
 
---TODO: Implementar logica para obtener IDs que tengan el formato ID identity con Value de parámetros
+/*
+Procedimiento almacenado que retorna una ID de aquellas tablas que tengan el formato de int identity.
+
+No retorna nada si no logra encontrar el valor, esto se validará en las funciones que implementen este
+procedimiento almacenado.
+*/
 go
-create or alter procedure PensarUnNombreAdecuado
+create or alter procedure ObtenerIDTablasComplementarias
 	@tabla nvarchar(255),
-	@texto varchar(200),
+	@value varchar(200),
 	@ID int output
 as
 begin
-	print 'Agregar funcionalidad'
+	begin transaction
+		begin try
+			declare @sql nvarchar(200) = concat('set @retorno = (select top(1) ID from ',@tabla,
+																' where [Value] like trim(''', @value, '''))');
+
+			exec sp_executesql @sql, N'@retorno int output', @ID output
+			commit transaction
+		end try
+		begin catch
+			print concat('Ha ocurrido un error en obtener el ID de la tabla ',@tabla )
+			print ERROR_MESSAGE()
+			print ERROR_LINE()
+			rollback transaction
+		end catch
 end
 go
 
 
+--Obtener ID mediante DNI para las tablas que posean de atributo DNI
+--TODO: hacer lo mismo pero que se busque mediante nombre y apellido
+go
+create or alter function ObtenerIDClientePorDNI(@DNI char(8)) returns varchar(25) as
+begin
+	return (select top(1) ID from Cliente where DNI = @DNI);
+end
+go
+
+go
+create or alter function ObtenerIDEmpleadoPorDNI(@DNI char(8)) returns varchar(25) as
+begin
+	return (select top(1)ID from Empleado where DNI = @DNI);
+end
+go
 
 /***************************
 	Tablas Principales
@@ -167,8 +204,13 @@ create or alter procedure RegistrarCliente
 begin
 	begin try
 		begin transaction
-		declare @idgenero int = (select ID from Genero where [Value] like trim(@genero))
+		declare @idgenero int;
+
+		--obtener id de forma dinámica para genero
+		exec ObtenerIDTablasComplementarias 'Genero', @genero, @idgenero output
 		declare @idCliente varchar(25)
+
+		--obtener id de forma dinámica para la tabla correspondiente
 		exec CrearID 'CLI', 'Cliente', @idCliente output
 		insert into Cliente values (@idCliente, @idgenero, @DNI, @Apellido_Paterno, @Apellido_Materno, @Nombre);
 		commit transaction
@@ -176,7 +218,7 @@ begin
 	begin catch
 		declare @posibleCausa varchar(150) = 'sea por otro motivo, lea el error para más detalles';
 		select @posibleCausa = case ERROR_NUMBER()
-			when 515 then 'el género esté mal escrito, debe ser hombre, mujer, otros u otro valor agregado de la tabla Genero'
+			when 515 then 'el género esté mal escrito, debe ser hombre, mujer u otro valor agregado de la tabla Genero'
 			when 2627 then 'el DNI colocado ya exista'
 			when 547 then 'el DNI tenga menos de 8 carácteres'
 		end
@@ -189,8 +231,118 @@ begin
 end
 go
 
-select * from Cliente
+--Datos de prueba
+exec RegistrarCliente '78549632', 'Dominguez', 'Cabrera', 'Carlos Paolo', 'Hombre'
+exec RegistrarCliente '12345678', 'López', 'Ramírez', 'Ana María', 'mujer'
+exec RegistrarCliente '87654321', 'García', 'Mendoza', 'Luis Alberto', 'hombre'
+exec RegistrarCliente '23456789', 'Torres', 'Pérez', 'María José', 'mujer'
+exec RegistrarCliente '98765432', 'Rodríguez', 'Chávez', 'Ricardo', 'hombre'
+exec RegistrarCliente '34567890', 'Gómez', 'Flores', 'Luz Elena', 'mujer'
+exec RegistrarCliente '76543210', 'Paredes', 'Gutiérrez', 'Juan Carlos', 'hombre'
+exec RegistrarCliente '45678901', 'Vargas', 'Jiménez', 'Isabel', 'mujer'
 
---TODO: Agregar más registros mediante IA
-exec RegistrarCliente '71821732', 'prueba', 'prueba', 'cc', 'hombre e'
 
+
+go
+create or alter procedure RegistrarEmpleado
+	@DNI char(8),
+	@Apellido_Paterno nvarchar(100),
+	@Apellido_Materno nvarchar(100),
+	@Nombre nvarchar(100),
+	@genero varchar(75),
+	@tipoEmpleado varchar(100),
+	@sueldo money as
+begin
+	begin try
+		begin transaction
+		declare @idgenero int,
+				@idtipoempleado int,
+				@idEmpleado varchar(25)
+
+		--obtener id de forma dinámica para genero
+		exec ObtenerIDTablasComplementarias 'Genero', @genero, @idgenero output
+
+		--obtener id de forma dinámica para tipoEmpleado
+		exec ObtenerIDTablasComplementarias 'TipoEmpleado', @tipoEmpleado, @idtipoempleado output
+
+		--obtener id de forma dinámica para la tabla correspondiente
+		exec CrearID 'EMP', 'Empleado', @idEmpleado output
+		insert into Empleado values (@idEmpleado, @idgenero, @DNI, @Apellido_Paterno, @Apellido_Materno, @Nombre, @idtipoempleado, @sueldo);
+		commit transaction
+	end try
+	begin catch
+		declare @posibleCausa varchar(150) = 'sea por otro motivo, lea el error para más detalles';
+		select @posibleCausa = case ERROR_NUMBER()
+			when 515 then 'el género o el tipo empleado esté mal escrito, debe ser algún valor válido de la tabla correspondiente'
+			when 2627 then 'el DNI colocado ya exista'
+			when 547 then 'el DNI tenga menos de 8 carácteres o el sueldo sea menor a 800'
+		end
+		print ' '
+		print concat('Es posible que ', @posibleCausa, '.');
+
+		print ERROR_MESSAGE()
+		rollback transaction
+	end catch
+end
+go
+
+--Datos de prueba
+exec RegistrarEmpleado '85632145', 'Gonzales', 'Diaz', 'Gerardo', 'hombre', 'Lavandero', 950.00
+exec RegistrarEmpleado '12345678', 'Lopez', 'Gomez', 'Maria', 'mujer', 'Recepcionista', 820.50
+exec RegistrarEmpleado '98765432', 'Martinez', 'Perez', 'Carlos Alberto', 'hombre', 'Técnico', 900.25
+exec RegistrarEmpleado '45678901', 'Garcia', 'Rodriguez', 'Ana Isabel', 'mujer', 'Administrador', 1050.75
+exec RegistrarEmpleado '23456789', 'Fernandez', 'Hernandez', 'Juan Manuel', 'hombre', 'Planchador', 880.60
+exec RegistrarEmpleado '76543210', 'Gonzalez', 'Silva', 'Laura Carolina', 'mujer', 'Personal de limpieza', 810.90
+exec RegistrarEmpleado '54321098', 'Torres', 'Lopez', 'Roberto', 'hombre', 'Repartidor', 830.40
+exec RegistrarEmpleado '87654321', 'Perez', 'Mendoza', 'Luis Antonio', 'hombre', 'Lavandero', 920.30
+
+
+
+go
+create or alter procedure RegistrarRopaPorDNI
+@TipoRopa varchar(100),
+@Color varchar(100),
+@Material varchar(100),
+@DNI char(8),
+@Peso float,
+@Detalle text = null as
+begin
+	begin try
+		begin transaction
+		declare @idRopa varchar(25),
+				@idTipoRopa int,
+				@idColor int,
+				@idMaterial int,
+				@idCliente varchar(25)
+
+		exec CrearID 'ROP', 'Ropa', @idRopa output
+		exec ObtenerIDTablasComplementarias 'TipoRopa', @TipoRopa, @idTipoRopa output
+		exec ObtenerIDTablasComplementarias 'ColorRopa', @Color, @idColor output
+		exec ObtenerIDTablasComplementarias 'MaterialRopa', @Material, @idMaterial output
+		set @idCliente = dbo.ObtenerIDClientePorDNI(@DNI);
+
+		insert into Ropa values(@idRopa, @idTipoRopa, @idColor, @idMaterial, @idCliente, @Peso, @Detalle)
+
+		commit transaction
+	end try
+	begin catch
+		declare @posibleCausa varchar(150) = 'sea por otro motivo, lea el error para más detalles';
+		select @posibleCausa = case ERROR_NUMBER()
+			when 515 then 'algún dato esté mal escrito, debe ser algún valor válido de la tabla correspondiente'
+			when 547 then 'algún dato tenga un formato no adecuado, revise siguiente mensaje para más detalle'
+		end
+		print ' '
+		print concat('Es posible que ', @posibleCausa, '.');
+
+		print ERROR_MESSAGE()
+		rollback transaction
+	end catch
+end
+go
+
+exec RegistrarRopaPorDNI 'camiseta', 'Azul', 'seda', '98765432', 100, 'Lavar por separado'
+exec RegistrarRopaPorDNI 'jean', 'Azul', 'denim', '98765432', 950
+
+select * from Ropa
+
+--TODO: registrar maquinarias

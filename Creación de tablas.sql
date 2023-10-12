@@ -96,7 +96,7 @@ CREATE TABLE Empleado(
 	Apellido_materno nvarchar(100) not null,
 	Nombre nvarchar(100) not null,
 	ID_TipoEmpleado int not null foreign key references TipoEmpleado(ID),
-	Sueldo money check (Sueldo >= 800 and Sueldo <= 2500 and Sueldo is not null)
+	Sueldo money check (Sueldo >= 800 and Sueldo is not null)
 );
 
 CREATE TABLE Ropa(
