@@ -527,6 +527,47 @@ exec RegistrarPlanchadora 'Electrolux', 'IronMaster Pro', 40
 exec RegistrarPlanchadora 'Electrolux', 'SteamGlide', 35
 exec RegistrarPlanchadora 'Electrolux', 'EasyPress Deluxe', 30
 
-select * from Lavadora
-select * from Secadora
-select * from Planchadora
+--TODO: Ticket, Producto y tablas mtm
+go
+create or alter procedure RegistrarProducto
+@tipoProducto varchar(100),
+@marcaProducto varchar(100),
+@precio money,
+@stock int,
+@descripcion text = null as
+begin
+	begin try
+		begin transaction
+		declare @idProducto varchar(25),
+				@idTipoProducto varchar(25),
+				@idMarcaProducto varchar(25);
+
+		exec CrearID 'PRO', 'Producto', @idProducto output
+		exec ObtenerIDTablasComplementarias 'TipoProducto', @tipoProducto, @idTipoProducto output
+		exec ObtenerIDTablasComplementarias 'MarcaProducto', @marcaProducto, @idMarcaProducto output
+
+		insert into Producto values(@idProducto, @idTipoProducto, @idMarcaProducto, @precio, @descripcion, @stock)
+
+		commit transaction
+	end try
+	begin catch
+		exec ErrorCatch
+		rollback transaction
+	end catch
+end
+go
+
+exec RegistrarProducto 'detergente', 'Ariel', 47.50, 50
+exec RegistrarProducto 'suavizante', 'Bolivar', 30.50, 35
+exec RegistrarProducto 'Bolas de lana', 'Woolzies', 15.50, 83
+
+
+--TODO: acabar eso
+go
+create or alter procedure RegistrarTicket
+@DNIEmpleado char(8),
+@DNICliente char(8),
+@TipoServicio varchar(200),
+@MetodoPago varcha(100),
+
+go
