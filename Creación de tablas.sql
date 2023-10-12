@@ -105,7 +105,7 @@ CREATE TABLE Ropa(
 	ID_Color int not null foreign key references ColorRopa(ID),
 	ID_Material int not null foreign key references MaterialRopa(ID),
 	ID_Cliente varchar(25) not null foreign key references Cliente(ID),
-	Peso float not null,
+	Peso float not null, --En gramos
 	Detalle text
 );
 
@@ -127,7 +127,7 @@ CREATE TABLE Lavadora(
 	ID_Estado int not null foreign key references EstadoMaquinaria(ID),
 	ID_Marca int not null foreign key references MarcaMaquinaria(ID),
 	Modelo nvarchar(100),
-	ConsumoEnergia float check(ConsumoEnergia > 0) not null, --en kWh
+	ConsumoEnergia float check(ConsumoEnergia > 0) not null, --en kWh/año
 	Detalle text,
 	CapacidadMaxima float check(CapacidadMaxima > 0) not null --Peso en kg
 );

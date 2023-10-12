@@ -160,7 +160,7 @@ begin
 	begin transaction
 		begin try
 			declare @sql nvarchar(200) = concat('set @retorno = (select top(1) ID from ',@tabla,
-																' where [Value] like trim(''', @value, '''))');
+																' where [Value] like trim(''', @value, ''') COLLATE Latin1_general_CI_AI)');
 
 			exec sp_executesql @sql, N'@retorno int output', @ID output
 			commit transaction
@@ -176,7 +176,6 @@ go
 
 
 --Obtener ID mediante DNI para las tablas que posean de atributo DNI
---TODO: hacer lo mismo pero que se busque mediante nombre y apellido
 go
 create or alter function ObtenerIDClientePorDNI(@DNI char(8)) returns varchar(25) as
 begin
@@ -190,6 +189,54 @@ begin
 	return (select top(1)ID from Empleado where DNI = @DNI);
 end
 go
+
+
+--Obtener ID mediante apellidos y nombres
+go
+create or alter function ObtenerIDClientePorNombre(
+@apellidoP nvarchar(100),
+@apellidoM nvarchar(100),
+@nombre nvarchar(100)
+) returns varchar(25) as
+begin
+	return (select top(1)ID from Cliente where 
+							[Apellido_paterno] like trim(@apellidoP) COLLATE Latin1_general_CI_AI and
+							[Apellido_materno] like trim(@apellidoM) COLLATE Latin1_general_CI_AI and
+							[Nombre] like trim(@nombre) COLLATE Latin1_general_CI_AI);
+end
+go
+
+go
+create or alter function ObtenerIDEmpleadoPorNombre(
+@apellidoP nvarchar(100),
+@apellidoM nvarchar(100),
+@nombre nvarchar(100)
+) returns varchar(25) as
+begin
+	return (select top(1)ID from Empleado where 
+							[Apellido_paterno] like trim(@apellidoP) COLLATE Latin1_general_CI_AI and
+							[Apellido_materno] like trim(@apellidoM) COLLATE Latin1_general_CI_AI and
+							[Nombre] like trim(@nombre) COLLATE Latin1_general_CI_AI);
+end
+go
+
+
+--Procedimiento almacenado que da este formato de error, colocar solo en los catch
+go
+create or alter procedure ErrorCatch as
+begin
+		declare @posibleCausa varchar(150) = 'sea por otro motivo, lea el error para más detalles';
+		select @posibleCausa = case ERROR_NUMBER()
+			when 515 then 'algún dato esté mal escrito, debe ser algún valor válido de la tabla correspondiente'
+			when 547 then 'algún dato tenga un formato no adecuado, revise siguiente mensaje para más detalle'
+		end
+		print ' '
+		print concat('Es posible que ', @posibleCausa, '.');
+
+		print ERROR_MESSAGE()
+end
+go
+
 
 /***************************
 	Tablas Principales
@@ -326,23 +373,160 @@ begin
 		commit transaction
 	end try
 	begin catch
-		declare @posibleCausa varchar(150) = 'sea por otro motivo, lea el error para más detalles';
-		select @posibleCausa = case ERROR_NUMBER()
-			when 515 then 'algún dato esté mal escrito, debe ser algún valor válido de la tabla correspondiente'
-			when 547 then 'algún dato tenga un formato no adecuado, revise siguiente mensaje para más detalle'
-		end
-		print ' '
-		print concat('Es posible que ', @posibleCausa, '.');
-
-		print ERROR_MESSAGE()
+		exec ErrorCatch
 		rollback transaction
 	end catch
 end
 go
 
+
+go
+create or alter procedure RegistrarRopaPorNombre
+@TipoRopa varchar(100),
+@Color varchar(100),
+@Material varchar(100),
+@apellidoP nvarchar(100),
+@apellidoM nvarchar(100),
+@nombre nvarchar(100),
+@Peso float,
+@Detalle text = null as
+begin
+	begin try
+		begin transaction
+		declare @idRopa varchar(25),
+				@idTipoRopa int,
+				@idColor int,
+				@idMaterial int,
+				@idCliente varchar(25)
+
+		exec CrearID 'ROP', 'Ropa', @idRopa output
+		exec ObtenerIDTablasComplementarias 'TipoRopa', @TipoRopa, @idTipoRopa output
+		exec ObtenerIDTablasComplementarias 'ColorRopa', @Color, @idColor output
+		exec ObtenerIDTablasComplementarias 'MaterialRopa', @Material, @idMaterial output
+		set @idCliente = dbo.ObtenerIDClientePorNombre(@apellidoP, @apellidoM, @nombre);
+
+		insert into Ropa values(@idRopa, @idTipoRopa, @idColor, @idMaterial, @idCliente, @Peso, @Detalle)
+
+		commit transaction
+	end try
+	begin catch
+		exec ErrorCatch
+		rollback transaction
+	end catch
+end
+go
+
+
+--Registro por DNI
 exec RegistrarRopaPorDNI 'camiseta', 'Azul', 'seda', '98765432', 100, 'Lavar por separado'
 exec RegistrarRopaPorDNI 'jean', 'Azul', 'denim', '98765432', 950
 
-select * from Ropa
+--Registro por Nombre
+exec RegistrarRopaPorNombre 'chaqueta', 'verde', 'mixto', 'gomez', 'flores', 'luz elena', 800
 
---TODO: registrar maquinarias
+
+
+--Se registra la maquinaria como apagada
+go
+create or alter procedure RegistrarLavadora
+@marca varchar(100),
+@modelo nvarchar(100),
+@consumoEnergia float,
+@capacidadMax float,
+@detalle text = null as
+begin
+	begin try
+		begin transaction
+		declare @idMarca int,
+				@idLavadora varchar(25);
+		
+		exec CrearID 'LAV', 'Lavadora', @idLavadora output;
+		exec ObtenerIDTablasComplementarias 'MarcaMaquinaria', @marca, @idMarca output;
+
+		insert into Lavadora values(@idLavadora, 2, @idMarca, @modelo, @consumoEnergia, @detalle, @capacidadMax);
+
+		commit transaction
+	end try
+	begin catch
+		exec ErrorCatch
+		rollback transaction
+	end catch
+end
+go
+
+
+go
+create or alter procedure RegistrarSecadora
+@marca varchar(100),
+@modelo nvarchar(100),
+@consumoEnergia float,
+@capacidadMax float,
+@detalle text = null as
+begin
+	begin try
+		begin transaction
+		declare @idMarca int,
+				@idSecadora varchar(25);
+		
+		exec CrearID 'SEC', 'Secadora', @idSecadora output;
+		exec ObtenerIDTablasComplementarias 'MarcaMaquinaria', @marca, @idMarca output;
+
+		insert into Secadora values(@idSecadora, 2, @idMarca, @modelo, @consumoEnergia, @detalle, @capacidadMax);
+
+		commit transaction
+	end try
+	begin catch
+		exec ErrorCatch
+		rollback transaction
+	end catch
+end
+go
+
+
+go
+create or alter procedure RegistrarPlanchadora
+@marca varchar(100),
+@modelo nvarchar(100),
+@consumoEnergia float,
+@detalle text = null as
+begin
+	begin try
+		begin transaction
+		declare @idMarca int,
+				@idPlanchadora varchar(25);
+		
+		exec CrearID 'PLA', 'Planchadora', @idPlanchadora output;
+		exec ObtenerIDTablasComplementarias 'MarcaMaquinaria', @marca, @idMarca output;
+
+		insert into Planchadora values(@idPlanchadora, 2, @idMarca, @modelo, @consumoEnergia, @detalle);
+
+		commit transaction
+	end try
+	begin catch
+		exec ErrorCatch
+		rollback transaction
+	end catch
+end
+go
+
+
+--Datos de prueba
+exec RegistrarLavadora 'LG', 'TurboClean Pro X1', 150, 9
+exec RegistrarLavadora 'LG', 'EcoWash Elite 9000', 130, 8
+exec RegistrarLavadora 'LG', 'AquaSpin Xplorer 7.0', 110, 7
+exec RegistrarLavadora 'LG', 'SmartWash infinity 10K', 180, 10, 'No usar con tanta frecuencia'
+exec RegistrarLavadora 'LG', 'EcoSteam Master Series Pro', 160, 9.5
+
+exec RegistrarSecadora 'Samsung', 'DryMaster Pro 9000', 190, 8.5
+exec RegistrarSecadora 'Samsung', 'AirWave TurboDry 7.0', 160, 7, 'Filtro de pelusa de fácil limpieza'
+exec RegistrarSecadora 'Samsung', 'EcoDry Inverter Plus', 120, 9, 'Secados personalizados'
+exec RegistrarSecadora 'Samsung', 'SmartDry Wi-Fi Connected', 200, 8, 'Permite usarse inalambricamente'
+exec RegistrarSecadora 'Samsung', 'QuickDry Express 6.5', 150, 6.5
+
+exec RegistrarPlanchadora 'Electrolux', 'IronMaster Pro', 40
+exec RegistrarPlanchadora 'Electrolux', 'SteamGlide', 35
+exec RegistrarPlanchadora 'Electrolux', 'EasyPress Deluxe', 30
+
+select * from Lavadora
+select * from Secadora
+select * from Planchadora
