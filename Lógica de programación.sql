@@ -48,6 +48,7 @@ insert into TipoServicio values
 ('Eliminación de manchas', 'En caso la ropa tenga manchas difíciles de quitar', 15),
 ('Entrega a domicilio', 'El servicio de lavado estándar, con la diferencia de que la ropa será enviada a domicilio del cliente', 12)
 
+select * from Cliente where ID = 'CLI-5'
 
 insert into MetodoPago values
 ('Efectivo'), ('Tarjeta de crédito o debito'), ('Pago móvil'), ('Transferencia bancaria')
@@ -562,12 +563,45 @@ exec RegistrarProducto 'suavizante', 'Bolivar', 30.50, 35
 exec RegistrarProducto 'Bolas de lana', 'Woolzies', 15.50, 83
 
 
---TODO: acabar eso
+--TODO: acabar esto
 go
-create or alter procedure RegistrarTicket
+create or alter procedure RegistrarTicketPorDNI
 @DNIEmpleado char(8),
 @DNICliente char(8),
 @TipoServicio varchar(200),
-@MetodoPago varcha(100),
+@MetodoPago varchar(100) as
+begin
+	
+end
+go
+
 
 go
+create or alter procedure ObtenerMontoDeRopaDNI
+@DNI char(8),
+@PrecioServicio money,
+@monto money output as
+begin
+	
+	declare @peso float;
+	declare recorrerRopas cursor for select Ropa.Peso from Ropa 
+	inner join Cliente on Ropa.ID_Cliente = Cliente.ID where DNI = @DNI;
+
+	open recorrerRopas
+	fetch next from recorrerRopas into @peso
+
+	set @monto = 1
+	while @@FETCH_STATUS = 0
+	begin
+		set @monto += @PrecioServicio + (@peso * 0.02);
+		fetch next from recorrerRopas into @peso
+	end
+
+	close recorrerRopas
+	deallocate recorrerRopas
+end
+go
+
+declare @c money;
+exec ObtenerMontoDeRopaDNI '98765432', 10, @c output
+print @c
