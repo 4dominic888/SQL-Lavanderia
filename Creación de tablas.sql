@@ -1,5 +1,5 @@
-create database [La Percha]
-use [La Percha]
+create database [Lavanderia La Percha]
+use [Lavanderia La Percha]
 
 
 /*******************************

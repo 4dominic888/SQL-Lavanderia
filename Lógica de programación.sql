@@ -1,3 +1,4 @@
+use [Lavanderia La Percha]
 /***************************
 	Tablas Complementarias
     ****************************/
@@ -48,11 +49,8 @@ insert into TipoServicio values
 ('Eliminación de manchas', 'En caso la ropa tenga manchas difíciles de quitar', 15),
 ('Entrega a domicilio', 'El servicio de lavado estándar, con la diferencia de que la ropa será enviada a domicilio del cliente', 12)
 
-select * from Cliente where ID = 'CLI-5'
-
 insert into MetodoPago values
-('Efectivo'), ('Tarjeta de crédito o debito'), ('Pago móvil'), ('Transferencia bancaria')
-
+('Efectivo'), ('Tarjeta de crédito'), ('Pago móvil'), ('Transferencia bancaria')
 
 insert into EstadoMaquinaria values
 ('Encendido', 'Indica que la maquinaria está encendida y no esta siendo ocupada'),
@@ -119,7 +117,7 @@ create or alter procedure CrearID
 as
 begin
 	begin try
-		begin transaction
+		begin transaction CID
 		if(len(@prefijo) = 3) begin
 			--Si existe registros en la tabla, usar la ID del último registro, caso contrario, usar 1
 			declare @sql nvarchar(200) = concat('if exists (select top(1) ID from ',@tabla,') ', 
@@ -128,18 +126,18 @@ begin
 			declare @idTabla nvarchar(25)
 			exec sp_executesql @sql, N'@r nvarchar(25) output', @idTabla output
 			set @retorno = dbo.SiguienteID(@idTabla, @prefijo);
-			commit transaction
+			commit transaction CID
 		end
 		else begin
 			print('El prefijo no tiene 3 carácteres, creación de ID fallida')
-			rollback transaction
+			rollback transaction CID
 		end
 	end try
 	begin catch
 		print concat('Ha ocurrido un error en asignar el ID de la tabla ',@tabla )
 		print ERROR_MESSAGE()
 		print ERROR_LINE()
-		rollback transaction
+		rollback transaction CID
 	end catch
 end
 go
@@ -158,19 +156,19 @@ create or alter procedure ObtenerIDTablasComplementarias
 	@ID int output
 as
 begin
-	begin transaction
+	begin transaction OITC
 		begin try
 			declare @sql nvarchar(200) = concat('set @retorno = (select top(1) ID from ',@tabla,
 																' where [Value] like trim(''', @value, ''') COLLATE Latin1_general_CI_AI)');
 
 			exec sp_executesql @sql, N'@retorno int output', @ID output
-			commit transaction
+			commit transaction OITC
 		end try
 		begin catch
 			print concat('Ha ocurrido un error en obtener el ID de la tabla ',@tabla )
 			print ERROR_MESSAGE()
 			print ERROR_LINE()
-			rollback transaction
+			rollback transaction OITC
 		end catch
 end
 go
@@ -393,7 +391,7 @@ create or alter procedure RegistrarRopaPorNombre
 @Detalle text = null as
 begin
 	begin try
-		begin transaction
+		begin transaction RPPN
 		declare @idRopa varchar(25),
 				@idTipoRopa int,
 				@idColor int,
@@ -408,15 +406,14 @@ begin
 
 		insert into Ropa values(@idRopa, @idTipoRopa, @idColor, @idMaterial, @idCliente, @Peso, @Detalle)
 
-		commit transaction
+		commit transaction RPPN
 	end try
 	begin catch
 		exec ErrorCatch
-		rollback transaction
+		rollback transaction RPPN
 	end catch
 end
 go
-
 
 --Registro por DNI
 exec RegistrarRopaPorDNI 'camiseta', 'Azul', 'seda', '98765432', 100, 'Lavar por separado'
@@ -424,8 +421,6 @@ exec RegistrarRopaPorDNI 'jean', 'Azul', 'denim', '98765432', 950
 
 --Registro por Nombre
 exec RegistrarRopaPorNombre 'chaqueta', 'verde', 'mixto', 'gomez', 'flores', 'luz elena', 800
-
-
 
 --Se registra la maquinaria como apagada
 go
@@ -563,19 +558,7 @@ exec RegistrarProducto 'suavizante', 'Bolivar', 30.50, 35
 exec RegistrarProducto 'Bolas de lana', 'Woolzies', 15.50, 83
 
 
---TODO: acabar esto
-go
-create or alter procedure RegistrarTicketPorDNI
-@DNIEmpleado char(8),
-@DNICliente char(8),
-@TipoServicio varchar(200),
-@MetodoPago varchar(100) as
-begin
-	
-end
-go
-
-
+--TODO: Implementar trigger para obtener la boleta, es para la auditoria
 go
 create or alter procedure ObtenerMontoDeRopaDNI
 @DNI char(8),
@@ -583,25 +566,72 @@ create or alter procedure ObtenerMontoDeRopaDNI
 @monto money output as
 begin
 	
-	declare @peso float;
+	declare @peso float,
+			@constanteGramo float = 0.002;
 	declare recorrerRopas cursor for select Ropa.Peso from Ropa 
 	inner join Cliente on Ropa.ID_Cliente = Cliente.ID where DNI = @DNI;
 
 	open recorrerRopas
 	fetch next from recorrerRopas into @peso
 
-	set @monto = 1
+	set @monto = 0
 	while @@FETCH_STATUS = 0
 	begin
-		set @monto += @PrecioServicio + (@peso * 0.02);
+		set @monto += @PrecioServicio + (@peso * @constanteGramo);
 		fetch next from recorrerRopas into @peso
 	end
+
+	if @monto = 0 set @monto = -1 --retorna -1 si el cliente no tiene ropa para lavar
 
 	close recorrerRopas
 	deallocate recorrerRopas
 end
 go
 
-declare @c money;
-exec ObtenerMontoDeRopaDNI '98765432', 10, @c output
-print @c
+
+go
+create or alter procedure RegistrarTicketPorDNI
+@DNIEmpleado char(8),
+@DNICliente char(8),
+@TipoServicio varchar(200),
+@MetodoPago varchar(100),
+@tiempoEstimadoMinutos int as
+begin
+	begin try
+		begin transaction
+
+		declare @idticket varchar(25),
+				@idempleado varchar(25),
+				@idcliente varchar(25),
+				@idtiposervicio int,
+				@idmetodopago int,
+				@precio money,
+				@precioservicio money,
+				@fechaEstimada date
+
+		exec CrearID 'TIK', 'Ticket', @idticket output;
+		set @idempleado = dbo.ObtenerIDEmpleadoPorDNI(@DNIEmpleado);
+		set @idcliente = dbo.ObtenerIDClientePorDNI(@DNICliente);
+		exec ObtenerIDTablasComplementarias 'TipoServicio', @TipoServicio, @idtiposervicio output;
+		exec ObtenerIDTablasComplementarias 'MetodoPago', @MetodoPago, @idmetodopago output;
+		set @precioservicio = (select top(1) PrecioPorRopa from TipoServicio where ID = @idtiposervicio)
+		exec ObtenerMontoDeRopaDNI @DNICliente, @precioservicio, @precio output;
+
+		set @fechaEstimada = dateadd(MINUTE, @tiempoEstimadoMinutos, getdate()) --Usada proximamente para la boleta
+
+		insert into Ticket (ID, ID_Empleado, ID_Cliente, ID_TipoServicio, ID_MetodoPago, Precio)
+
+		values (@idticket, @idempleado, @idcliente, @idtiposervicio, @idmetodopago, @precio);
+
+		commit transaction
+	end try
+	begin catch
+		exec ErrorCatch
+		rollback transaction
+	end catch
+end
+go
+
+exec RegistrarTicketPorDNI '85632145', '98765432', 'estandar', 'tarjeta de credito', 32
+
+select * from Ticket
