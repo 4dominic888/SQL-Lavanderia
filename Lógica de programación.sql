@@ -224,10 +224,11 @@ go
 go
 create or alter procedure ErrorCatch as
 begin
-		declare @posibleCausa varchar(150) = 'sea por otro motivo, lea el error para más detalles';
+		declare @posibleCausa varchar(150);
 		select @posibleCausa = case ERROR_NUMBER()
 			when 515 then 'algún dato esté mal escrito, debe ser algún valor válido de la tabla correspondiente'
 			when 547 then 'algún dato tenga un formato no adecuado, revise siguiente mensaje para más detalle'
+			else 'sea por otro motivo, lea el error para más detalles'
 		end
 		print ' '
 		print concat('Es posible que ', @posibleCausa, '.');
@@ -523,7 +524,43 @@ exec RegistrarPlanchadora 'Electrolux', 'IronMaster Pro', 40
 exec RegistrarPlanchadora 'Electrolux', 'SteamGlide', 35
 exec RegistrarPlanchadora 'Electrolux', 'EasyPress Deluxe', 30
 
---TODO: Ticket, Producto y tablas mtm
+
+go
+create or alter procedure CambiarEstadoMaquinaria
+@IDMaquinaria varchar(25),
+@Estado varchar(100) as
+begin
+	begin try
+		begin transaction
+		declare @tabla varchar(20),
+			@TipoMaquinaria char(3) = substring(@IDMaquinaria, 0, 4),
+			@sql nvarchar(200),
+			@IDEstado int;
+
+		select @tabla = case @TipoMaquinaria
+			when 'LAV' then 'Lavadora'
+			when 'SEC' then 'Secadora'
+			when 'PLA' then 'Planchadora'
+			else 'CodigoNoValido'
+		end
+
+		exec ObtenerIDTablasComplementarias 'EstadoMaquinaria', @Estado, @IDEstado output
+		set @sql = CONCAT('update ', @tabla, ' set ID_Estado = ', @IDEstado, ' where ID = ''', @IDMaquinaria, '''')
+		exec sp_executesql @sql
+		commit transaction
+	end try
+	begin catch
+		exec ErrorCatch
+		rollback transaction
+	end catch
+end
+go
+
+--Datos de prueba
+exec CambiarEstadoMaquinaria 'SEC-5', 'encendido'
+
+
+
 go
 create or alter procedure RegistrarProducto
 @tipoProducto varchar(100),
@@ -589,6 +626,7 @@ end
 go
 
 
+--El registro del ticket por nombre no se implementará por tomar muchos parámetros
 go
 create or alter procedure RegistrarTicketPorDNI
 @DNIEmpleado char(8),
@@ -632,6 +670,121 @@ begin
 end
 go
 
-exec RegistrarTicketPorDNI '85632145', '98765432', 'estandar', 'tarjeta de credito', 32
+/*
+TODO: Implementar un trigger que ejecutando este procedure,
+borre las ropas y productos usados, registradas del cliente, 
+simulando que su ropa ha sido lavada
+*/
+go
+create or alter procedure FinalizarPedido @idTicket varchar(25) as
+begin
+	declare @fecha datetime = (select top(1) Fecha_Entrega from Ticket where ID = @idTicket)
+	if @fecha is null
+		update Ticket set Fecha_Entrega = GETDATE() where ID = @idTicket
+	else print 'Este pedido ya ha sido finalizado previamente o no existe'
+end
+go
 
-select * from Ticket
+exec RegistrarTicketPorDNI '85632145', '98765432', 'estandar', 'tarjeta de credito', 32
+exec FinalizarPedido 'TIK-1'
+
+
+go
+create or alter procedure UsarProductoLavadora
+@idLavadora varchar(25),
+@idProducto varchar(25),
+@cantidad int as
+begin
+	begin try
+
+		declare @i int = 1,
+				@stock int;
+
+		--Cantidad de elementos de ese producto
+		set @stock = (select top(1) Stock from Producto where ID = @idProducto)
+
+		begin transaction
+		if @stock is null or (@stock > @cantidad)
+		begin
+			while @i <= @cantidad 
+			begin
+				insert into Lavadora_Producto values(@idLavadora, @idProducto);
+				set @i += 1;
+			end
+			update Producto set Stock = @stock - @cantidad where ID = @idProducto
+		end
+		else print 'No se pudo ingresar los datos'
+
+		commit transaction
+	end try
+	begin catch
+		exec ErrorCatch
+		rollback transaction
+	end catch
+end
+go
+
+go
+create or alter procedure UsarProductoSecadora
+@idSecadora varchar(25),
+@idProducto varchar(25),
+@cantidad int as
+begin
+	begin try
+
+		declare @i int = 1,
+				@stock int;
+
+		--Cantidad de elementos de ese producto
+		set @stock = (select top(1) Stock from Producto where ID = @idProducto)
+
+		begin transaction
+		if @stock is null or (@stock > @cantidad)
+		begin
+			while @i <= @cantidad 
+			begin
+				insert into Secadora_Producto values(@idSecadora, @idProducto);
+				set @i += 1;
+			end
+			update Producto set Stock = @stock - @cantidad where ID = @idProducto
+		end
+		else print 'No se pudo ingresar los datos'
+
+		commit transaction
+	end try
+	begin catch
+		exec ErrorCatch
+		rollback transaction
+	end catch
+end
+go
+
+
+exec UsarProductoLavadora 'LAV-2', 'PRO-1', 4;
+exec UsarProductoSecadora 'SEC-1', 'PRO-3', 2;
+
+
+
+go
+create or alter procedure AgregarStockProducto
+@idProducto varchar(25),
+@cantidad int as
+begin
+	update Producto set Stock = Stock + @cantidad where ID = @idProducto
+end
+go
+
+go
+create or alter procedure RestarStockProducto
+@idProducto varchar(25),
+@cantidad int as
+begin
+	update Producto set Stock = Stock - @cantidad where ID = @idProducto
+end
+go
+
+exec AgregarStockProducto 'PRO-3', 5
+exec RestarStockProducto 'PRO-3', 2
+
+
+--TODO: Triggers auditoria, vistas y creación de usuarios
