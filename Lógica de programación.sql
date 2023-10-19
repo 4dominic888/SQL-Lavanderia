@@ -287,8 +287,7 @@ exec RegistrarCliente '98765432', 'Rodríguez', 'Chávez', 'Ricardo', 'hombre'
 exec RegistrarCliente '34567890', 'Gómez', 'Flores', 'Luz Elena', 'mujer'
 exec RegistrarCliente '76543210', 'Paredes', 'Gutiérrez', 'Juan Carlos', 'hombre'
 exec RegistrarCliente '45678901', 'Vargas', 'Jiménez', 'Isabel', 'mujer'
-
-
+exec RegistrarCliente '68546321', 'Chavez', 'Vargas', 'Pedro', 'hombre'
 
 go
 create or alter procedure RegistrarEmpleado
@@ -787,4 +786,143 @@ exec AgregarStockProducto 'PRO-3', 5
 exec RestarStockProducto 'PRO-3', 2
 
 
---TODO: Triggers auditoria, vistas y creación de usuarios
+go
+create or alter procedure AgregarRopaMaquinaria
+@IDRopa nvarchar(25),
+@IDMaquinaria nvarchar(25),
+@Tiempo time as
+begin
+	begin try
+		begin transaction
+
+		insert into LimpiezaRopa values(@IDRopa, @IDMaquinaria, @Tiempo);
+
+		commit transaction
+	end try
+	begin catch
+		exec ErrorCatch
+		rollback transaction
+	end catch
+end
+go
+
+
+-----------------
+-----Vistas------
+-----------------
+
+create or alter view VerClientes as
+select 
+cli.ID,
+g.[Value] [Genero],
+cli.DNI,
+concat(cli.Apellido_paterno, ' ', cli.Apellido_materno) [Apellido],
+cli.Nombre
+from CLiente as cli inner join Genero as g on cli.ID_genero = g.ID
+
+
+
+create or alter view VerEmpleado as
+select
+emp.ID,
+g.[Value] [Genero],
+emp.DNI,
+concat(emp.Apellido_paterno, ' ', emp.Apellido_materno) [Apellido],
+emp.Nombre,
+t.[Value] [Tipo de empleado],
+concat('S/. ', emp.Sueldo) [Sueldo]
+from Empleado as emp
+inner join Genero as g on emp.ID_genero = g.ID
+inner join TipoEmpleado as t on emp.ID_TipoEmpleado = t.ID
+
+
+
+create or alter view verRopas as
+select
+rop.ID,
+tr.[Value] [Tipo de ropa],
+cr.[Value] [Color],
+mr.[Value] [Material],
+concat(cli.Apellido_paterno, ' ', cli.Apellido_materno, ' ', cli.Nombre) [Propietario],
+cli.DNI [DNI cliente],
+concat(rop.Peso, 'g') [Peso (g)],
+rop.Detalle
+
+from Ropa as rop
+inner join TipoRopa as tr on rop.ID_TipoRopa = tr.ID
+inner join ColorRopa as cr on rop.ID_Color = cr.ID
+inner join MaterialRopa as mr on rop.ID_Material = mr.ID
+inner join Cliente as cli on rop.ID_Cliente = cli.ID
+
+
+
+
+create or alter view VerLavadoras as
+select
+lav.ID,
+em.[Value] [Estado],
+mq.[Value] [Marca],
+concat(lav.ConsumoEnergia, ' kWh') [Consumo de energía (kWh)],
+concat(lav.CapacidadMaxima, ' kg') [Capacidad máxima (kg)],
+lav.Detalle
+from Lavadora as lav
+inner join EstadoMaquinaria as em on lav.ID_Estado = em.ID
+inner join MarcaMaquinaria as mq on lav.ID_Marca = mq.ID
+
+
+
+create or alter view VerSecadoras as
+select
+sec.ID,
+em.[Value] [Estado],
+mq.[Value] [Marca],
+concat(sec.ConsumoEnergia, ' kWh') [Consumo de energía (kWh)],
+concat(sec.CapacidadMaxima, ' kg') [Capacidad máxima (kg)],
+sec.Detalle
+from Secadora as sec
+inner join EstadoMaquinaria as em on sec.ID_Estado = em.ID
+inner join MarcaMaquinaria as mq on sec.ID_Marca = mq.ID
+
+
+
+
+create or alter view VerPlanchadoras as
+select
+pla.ID,
+em.[Value] [Estado],
+mq.[Value] [Marca],
+pla.Modelo,
+concat(pla.ConsumoEnergia, ' kWh') [Consumo de energía (kWh)],
+pla.Detalle
+from Planchadora as pla
+inner join EstadoMaquinaria as em on pla.ID_Estado = em.ID
+inner join MarcaMaquinaria as mq on pla.ID_Marca = mq.ID
+
+
+
+create or alter view verProductos as
+select
+pro.ID,
+tp.[Value] [Tipo de producto],
+mp.[Value] [Marca del producto],
+concat('S/. ',pro.Precio) [Precio],
+pro.Stock,
+pro.Descripcion
+from Producto as pro
+inner join TipoProducto as tp on pro.ID_TipoProducto = tp.ID
+inner join MarcaProducto as mp on pro.ID_MarcaProducto = mp.ID
+
+
+
+--TODO: Arreglar esta vista
+create or alter view VerProductosUsadosLavadora as
+select
+lp.ID,
+lav.Modelo as [Modelo de lavadora],
+tp.[Value] [Tipo de producto]
+from Lavadora_Producto as lp
+inner join Lavadora as lav on lp.ID_Lavadora = lav.ID
+inner join Producto as pro on lp.ID_Producto = pro.ID
+left join TipoProducto as tp on pro.ID_TipoProducto = tp.ID
+
+
