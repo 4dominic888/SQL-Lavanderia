@@ -684,6 +684,19 @@ begin
 end
 go
 
+go
+create or alter trigger TerminadoLimpiezaRopa on Ticket
+	after update as
+begin
+	
+	declare @idcliente varchar(25) = (select top(1) ID_Cliente from deleted);
+	delete from Ropa where ID_Cliente = @idcliente
+end
+go
+
+select * from Ticket
+select * from Ropa
+
 exec RegistrarTicketPorDNI '85632145', '98765432', 'estandar', 'tarjeta de credito', 32
 exec FinalizarPedido 'TIK-1'
 
@@ -856,7 +869,6 @@ inner join Cliente as cli on rop.ID_Cliente = cli.ID
 
 
 
-
 create or alter view VerLavadoras as
 select
 lav.ID,
@@ -914,10 +926,11 @@ inner join MarcaProducto as mp on pro.ID_MarcaProducto = mp.ID
 
 
 
---TODO: Arreglar esta vista
 create or alter view VerProductosUsadosLavadora as
 select
 lp.ID,
+lav.ID [Lavadora ID],
+pro.ID [Producto ID],
 lav.Modelo as [Modelo de lavadora],
 tp.[Value] [Tipo de producto]
 from Lavadora_Producto as lp
@@ -926,3 +939,32 @@ inner join Producto as pro on lp.ID_Producto = pro.ID
 left join TipoProducto as tp on pro.ID_TipoProducto = tp.ID
 
 
+
+create or alter view VerProductosUsadosSecadora as
+select
+lp.ID,
+sec.ID [Secadora ID],
+pro.ID [Producto ID],
+sec.Modelo as [Modelo de secadora],
+tp.[Value] [Tipo de producto]
+from Secadora_Producto as lp
+inner join Secadora as sec on lp.ID_Secadora = sec.ID
+inner join Producto as pro on lp.ID_Producto = pro.ID
+left join TipoProducto as tp on pro.ID_TipoProducto = tp.ID
+
+
+
+create or alter view verTickets as
+select
+tik.ID,
+tik.ID_Empleado [ID de empleado],
+tik.ID_Cliente [ID de cliente],
+ts.[Value] [Tipo de servicio],
+mp.[Value] [Método de pago elegido],
+concat('S/. ', ts.PrecioPorRopa) [Precio por ropa],
+tik.Fecha_Recepcion [Fecha de recepción],
+tik.Fecha_Entrega [Fecha de entrega],
+concat('S/. ', tik.Precio) [Monto total a pagar]
+from Ticket as tik
+inner join TipoServicio as ts on tik.ID_TipoServicio = ts.ID
+inner join MetodoPago as mp on tik.ID_MetodoPago = mp.ID
